@@ -847,7 +847,14 @@ end,
 			else
 				local data = private.data[1]
 				private.tempData = data
-				destroyBtn:SetAttribute("macrotext1", format("/cast %s;\n/use %d %d", data.spell, data.bag, data.slot))
+				-- Extract numeric item ID from the itemString (e.g., "item:12345:0" -> "12345")
+				local itemID = data.itemString:match("item:(%d+)")
+				if itemID then
+					destroyBtn:SetAttribute("macrotext1", format("/cast %s\n/use item:%s", data.spell, itemID))
+				else
+					-- Fallback to bag/slot if itemString parsing fails (should never happen)
+					destroyBtn:SetAttribute("macrotext1", format("/cast %s\n/use %d %d", data.spell, data.bag, data.slot))
+				end
 				destroyBtn:Disable()
 				TSMAPI:CancelFrame("destroyEnableDelay")
 				TSMAPI:CreateTimeDelay("destroyEnableDelay", 3, function() if not UnitCastingInfo("player") and not LootFrame:IsVisible() then destroyBtn:Enable() end end)
@@ -904,7 +911,20 @@ function private:UpdateST(forceShow)
 		TSMAPI:CreateTimeDelay("destroyBagUpdateDelay2", 1, function() isDelayed = true private:UpdateST() isDelayed = nil end)
 		return
 	end
-	if InCombatLockdown() then return end
+	
+	if InCombatLockdown() then
+        -- Try again in 1 second
+        TSMAPI:CancelFrame("combatUpdateDelay")
+        TSMAPI:CreateTimeDelay("combatUpdateDelay", 1, function() 
+            if not InCombatLockdown() then
+                private:UpdateST(forceShow) 
+            else
+                -- still in combat, schedule again
+                TSMAPI:CreateTimeDelay("combatUpdateDelay", 1, function() private:UpdateST(forceShow) end)
+            end
+        end)
+        return
+    end
 	
 	if TSM.db.global.autoStack then
 		private:Stack()
